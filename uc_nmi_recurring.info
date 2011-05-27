@@ -1,0 +1,8 @@
+name = Nmi Gateway Services Recurring
+description = uc_recurring extension module for NMI based gateways
+dependencies[] = uc_payment
+dependencies[] = uc_credit
+dependencies[] = uc_recurring
+package = Ubercart - payment
+core = 6.x
+php = 5.0
