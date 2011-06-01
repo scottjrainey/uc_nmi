@@ -36,10 +36,6 @@ function uc_nmi_recurring_info() {
     ), // Use the default user operation defined in uc_recurring.
   );
 
-  // TODO: Does this need to be here?
-  if (variable_get('nmi_customer_vault_mode', 'disabled') != 'disabled') {
-    $items['nmi'] = $items['nmi_customer_vault'];
-  }
   return $items;
 }
 
