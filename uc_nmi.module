@@ -321,7 +321,7 @@ function _uc_nmi_customer_vault_profile_create($order) {
  * Helper to create the Customer Vault profile create request
  */
 function _uc_nmi_customer_vault_profile_create_request($order) {
-  $vault = uc_nmi_recurring_load_vault();
+  $vault = uc_nmi_build_customer_vault();
 
   $month = str_pad($order->payment_details['cc_exp_month'], 2, 0, STR_PAD_LEFT);
   $year = substr($order->payment_details['cc_exp_year'], -2);
