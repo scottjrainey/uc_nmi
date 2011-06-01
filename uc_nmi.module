@@ -413,6 +413,6 @@ function uc_nmi_build_customer_vault($options = array()) {
   // Set url (if needed)
   $options['nmi_url'] = 'https://secure.inspiregateway.net/api/transact.php';
 
-  $vault = nmiCustomerVault($options);
+  $vault = new nmiCustomerVault($options);
   return $vault;
 }
