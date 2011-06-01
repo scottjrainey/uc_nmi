@@ -36,6 +36,9 @@ function uc_nmi_recurring_info() {
     ), // Use the default user operation defined in uc_recurring.
   );
 
+  // TODO: Find out why this works...
+  $items['nmi'] = $items['nmi_customer_vault'];
+
   return $items;
 }
 
