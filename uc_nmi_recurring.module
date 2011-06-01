@@ -50,53 +50,14 @@ function uc_nmi_recurring_info() {
  *   TRUE if recurring fee setup
  */
 function uc_nmi_recurring_customer_vault_process($order, &$fee) {
-  $account = user_load($order->uid);
-  if (!$account->data['customer_vault_id']) { // If the user doesn't already have a customer_vault_id...
-    $vault = uc_nmi_recurring_load_vault();
-  
-    $month = str_pad($order->payment_details['cc_exp_month'], 2, 0, STR_PAD_LEFT);
-    $year = substr($order->payment_details['cc_exp_year'], -2);
-
-    // Card information
-    $vault->setCcNumber($order->payment_details['cc_number']);
-    $vault->setCcExp($month.$year);
-
-    // Customer information
-    $vault->setCompany($order->billing_company);
-    $vault->setFirstName($order->billing_first_name);
-    $vault->setLastName($order->billing_last_name);
-
-    $billing_country = uc_get_country_data(array('country_id' => $order->billing_country));
-    $billing_country = $billing_country[0]['country_iso_code_2'];
-
-    // Billing address
-    $vault->setAddress1($order->billing_street1);
-    $vault->setAddress2($order->billing_street2);
-    $vault->setCity($order->billing_city);
-    $vault->setState(uc_get_zone_code($order->billing_zone));
-    $vault->setZip($order->billing_postal_code);
-    $vault->setCountry($billing_country);
-    $vault->setPhone($order->billing_phone);
-    $vault->setEmail($order->primary_email);
-
-    $vault->add();
-    $result = $vault->execute();
-
-    switch ($result['response']) {
-      case 1: // Success
-        $account->data['customer_vault_id'] = $result['customer_vault_id'];
-        user_save((object) array('uid' => $account->uid), (array) $account);
-        $ret = TRUE;
-        break;
-
-      default: // Error (response = 3) or Fail (response = 2)
-        $message = t('Customer Vault error or failure. Reason code: !text', array('!text' => $result['responsetext']));
-        watchdog('uc_nmi_recurring', $message, array(), WATCHDOG_ERROR);
-        $ret = FALSE;
-        break;
-    }
-    return $ret;
+  $fee->fee_handler = 'nmi_customer_vault';
+  if (variable_get('uc_nmi_customer_vault_profile', FALSE) == FALSE) {
+    $data = array(
+      'txn_type' => UC_CREDIT_REFERENCE_SET,
+    );
+    return uc_nmi_charge($order->order_id, $order->total_amount, $data);
   }
+  return TRUE;
 }
 
 /**
@@ -110,33 +71,19 @@ function uc_nmi_recurring_customer_vault_process($order, &$fee) {
  *   TRUE if renewal succeeded
  */
 function uc_nmi_recurring_customer_vault_renew($order, &$fee) {
-  $account = user_load($order->uid);
-  $vault = uc_nmi_recurring_load_vault();
+  if (!empty($order->data['cc_txns']['references'])) {
+    $data = array(
+      'txn_type' => UC_CREDIT_REFERENCE_TXN,
+      'ref_id' => end(array_keys($order->data['cc_txns']['references'])),
+    );
+    $result = uc_nmi_charge($order->order_id, $order->order_total, $data);
 
-  $vault->setCustomerVaultId($account->data['customer_vault_id']);
-  $vault->setOrderDescription("Drupal order $order->order_id");
-  $vault->charge($order->order_total);
-
-  $result = $vault->execute();
-  switch ($result['response']) {
-    case 1:
-      $message = t('Credit card payment processed successfully. Transaction ID: !trans', array('!trans' => $result['transactionid']));
-      uc_payment_enter($order->order_id, $order->payment_method, $order->order_total, $order->uid, $result, $result['responsetext']);
-      $ret = TRUE;
-      break;
-
-    case 2:
-      $message = t('Credit card declined. Reason code: !text', array('!text' => $result['responsetext']));
-      $ret = FALSE;
-      break;
-
-    case 3:
-      $message = t('Credit card error. Reason code: !text', array('!text' => $result['responsetext']));
-      $ret = FALSE;
-      break;
+    if ($result['success'] == TRUE) {
+      uc_payment_enter($order->order_id, $order->payment_method, $order->order_total, $fee->uid, $result['data'], $result['comment']);
+      return TRUE;
+    }
   }
-  uc_order_comment_save($order->order_id, $order->uid, $message, 'admin');
-  return $ret;
+  return FALSE;
 }
 
 /**
@@ -175,26 +122,24 @@ function uc_nmi_recurring_customer_vault_update_form($form_state, $rfid) {
  */
 function uc_nmi_recurring_customer_vault_update_form_submit(&$form, &$form_state) {
   $fee = uc_recurring_fee_user_load($form_state['values']['rfid']);
-  $account = user_load($fee->uid);
   $order = uc_order_load($fee->order_id);
   $order->payment_details = $form_state['values']['cc_data'];
-  $cv_id = $account->data['customer_vault_id'];
-  if ($message = _uc_nmi_recurring_customer_vault_update_profile($order, $cv_id)) {
-    watchdog('uc_nmi_recurring', $message, array(), WATCHDOG_ERROR);
-    drupal_set_message(t('Account update failed'), 'error');
+  $customer_vault_id = end(array_keys($order->data['cc_txns']['references']));
+  if ($message = _uc_nmi_recurring_customer_vault_update_paymentprofile($order, $customer_vault_id)) {
+    drupal_set_message(t('Account update failed.'), 'error');
   }
   else {
-    drupal_set_message(t('Account updated'));
-    $form_state['redirect'] = 'user/'. $form_state['values']['uid'];
+    drupal_set_message(t('Account updated.'));
+    $form_state['redirect'] = 'user/' . $form_state['values']['uid'];
   }
 }
 
 /**
  * TODO: This function needs to be moved to the uc_nmi module and renamed to:
- *         uc_nmi_update_customer_vault_profile($order, $cv_id)
+ *         uc_nmi_update_customer_vault_paymentprofile($order, $cv_id)
  */
-function uc_nmi_recurring_customer_vault_update_profile($order, $cv_id) {
-  $vault = uc_nmi_recurring_load_vault();
+function _uc_nmi_recurring_customer_vault_update_paymentprofile($order, $cv_id) {
+  $vault = uc_nmi_build_customer_vault();
   $vault->setCustomerVaultId($cv_id);
 
   $month = str_pad($order->payment_details['cc_exp_month'], 2, 0, STR_PAD_LEFT);
@@ -207,35 +152,11 @@ function uc_nmi_recurring_customer_vault_update_profile($order, $cv_id) {
   $vault->update();
   $result = $vault->execute();
 
-  switch ($result['response']) {
-    case 1: // Success
-      $message = t('Successfully updated customer vault for cv_id !cv_id', array('!cv_id' => $cv_id));
-      $message_type = WATCHDOG_NOTICE;
-      $ret = TRUE;
-      break;
-
-    default: // Error (response = 3) or Fail (response = 2)
-      $message = t('Customer Vault error or failure updating customer vault for cv_id !cv_id. Reason code: !text', array('!cv_id' => $cv_id, '!text' => $result['responsetext']));
-      $message_type = WATCHDOG_ERROR;
-      $ret = FALSE;
-      break;
+  if ($result['response'] != 1) {
+    uc_order_comment_save($order->order_id, 0, t('NMI: Update Customer Vault failed.<br/>Reason - @text', array('@text' => $result['responsetext'])), 'admin');
+    return $result['responsetext'];
   }
-  watchdog('uc_nmi_recurring', $message, array(), $message_type);
-  return $ret;
+  else {
+    uc_order_comment_save($order->order_id, 0, t('NMI: Customer Vault update - @id', array('@id' => $result['customer_vault_id'])));
+  }
 }
-
-/**
- * Create and return an nmiCustomerVault object
- */
-function uc_nmi_recurring_load_vault($options = array()) {
-  require_once 'lib/nmiCustomerVault.class.php';
-  // Set up the nmiCustomerVault object
-  $options['nmi_user'] = variable_get('nmi_username', '');
-  $options['nmi_password'] = variable_get('nmi_password', '');
-  // Set url (if needed)
-  $options['nmi_url'] = 'https://secure.inspiregateway.net/api/transact.php';
-
-  $vault = nmiCustomerVault($options);
-  return $vault;
-}
-

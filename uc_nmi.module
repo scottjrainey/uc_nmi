@@ -77,30 +77,51 @@ function uc_nmi_settings_form() {
     '#default_value' => variable_get('nmi_code', 'yes'),
   );
 
-  // Recurring settings
-  if (module_exists('uc_nmi_recurring')) {
-    $form['nmi_settings']['customer_vault_settings'] = array(
-      '#type' => 'fieldset',
-      '#title' => t('Customer Vault settings'),
-      '#description' => t('These settings pertain to the NMI Customer Vault service.')
-    );
-    $form['nmi_settings']['customer_vault_settings']['uc_nmi_customer_vault_profile'] = array(
-      '#type' => 'checkbox',
-      '#title' => t('Always create a Customer Vault profile for securely storing CC info for later user.'),
-      '#default_value' => variable_get('uc_nmi_customer_vault_profile', FALSE),
-    );
-  }
+  // Customer Vault stored profile settings
+  $form['nmi_settings']['customer_vault_settings'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('Customer Vault settings'),
+    '#description' => t('These settings pertain to the NMI Customer Vault service.')
+  );
+  $form['nmi_settings']['customer_vault_settings']['uc_nmi_customer_vault_profile'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Always create a Customer Vault profile for securely storing CC info for later user.'),
+    '#default_value' => variable_get('uc_nmi_customer_vault_profile', FALSE),
+  );
 
   return $form;
 }
 
+// Main handler for CC transactions
 function uc_nmi_charge($order_id, $amount, $data) {
-  global $user, $response;
   $order = uc_order_load($order_id);
+
+  switch ($data['txn_type']) {
+    // Charge and store profile using NMI's Customer Vault
+    case UC_CREDIT_REFERENCE_TXN:
+      return _uc_nmi_customer_vault_profile_charge($order, $amount, $data);
+    
+    // Store profile only
+    case UC_CREDIT_REFERENCE_SET:
+      if ($message = _uc_nmi_customer_vault_profile_create($order)) {
+        return array('success' => FALSE, 'message' => $message);
+      }
+      else {
+        return array('success' => TRUE, 'message' => t('New Customer Vault profile created successfully with NMI.'));
+      }
+    
+    // All other transactions
+    default:
+      return _uc_nmi_charge($order, $amount, $data);
+  }
+}
+
+function _uc_nmi_charge($order, $amount, $data) {
+  global $user;
 
   $description = '';
 
-  $description = "Drupal Order $order_id";
+  $description = "Drupal Order $order->order_id";
 
   $description = substr($description, 0, 255);
   $billing_country = uc_get_country_data(array('country_id' => $order->billing_country));
@@ -143,7 +164,7 @@ function uc_nmi_charge($order_id, $amount, $data) {
     'email' => $order->primary_email,
 
     // Order information
-    'orderid' => $order_id,  
+    'orderid' => $order->order_id,  
     'orderdescription' => $description,
 
     // Transaction Data
@@ -248,6 +269,12 @@ function uc_nmi_charge($order_id, $amount, $data) {
       'message' => t('Credit card payment processed successfully. Transaction ID: !trans', array('!trans' => $response['transactionid'])),
       'uid' => $user->uid,
     );
+    
+    // Set up customer vault profile if appropriate
+    if (variable_get('uc_nmi_customer_vault_profile', FALSE)) { // TODO: Add check for recurring product
+      _uc_nmi_customer_vault_profile_create($order);
+    }
+
   }elseif ($response['response'] == "2") {   // Payment Declined
     $message = t('Credit card declined. Reason code: !text', array('!text' => $response['responsetext']));
     $result = array(
@@ -266,8 +293,126 @@ function uc_nmi_charge($order_id, $amount, $data) {
     );
   }  
 
-  uc_order_comment_save($order_id, $user->uid, $message, 'admin');
+  uc_order_comment_save($order->order_id, $user->uid, $message, 'admin');
 
   return $result;
 
+}
+
+function _uc_nmi_customer_vault_profile_create($order) {
+  $result = _uc_nmi_customer_vault_profile_create_request($order);
+  // Bail on error (response = 3) or failure (response = 2)
+  if ($result['response'] != 1) {
+    $message = t('NMI: Customer Vault error or failure. Reason code: !text', array('!text' => $result['responsetext']));
+    uc_order_comment_save($order->order_id, 0, $message, 'admin');
+    watchdog('uc_nmi_recurring', $message, array(), WATCHDOG_ERROR);
+    return $message;
+  }
+  else {
+    uc_order_comment_save($order->order_id, 0, t('NMI: Customer Vault profile created - @id', array('@id' => $result['customer_vault_id'])));
+  } 
+  
+  // Save the new profile to the db
+  $order->data = uc_credit_log_reference($order->order_id, $result['customer_vault_id'], $order->payment_details['cc_number']);
+  return '';
+}
+
+/**
+ * Helper to create the Customer Vault profile create request
+ */
+function _uc_nmi_customer_vault_profile_create_request($order) {
+  $vault = uc_nmi_recurring_load_vault();
+
+  $month = str_pad($order->payment_details['cc_exp_month'], 2, 0, STR_PAD_LEFT);
+  $year = substr($order->payment_details['cc_exp_year'], -2);
+
+  // Card information
+  $vault->setCcNumber($order->payment_details['cc_number']);
+  $vault->setCcExp($month.$year);
+
+  // Customer information
+  $vault->setCompany($order->billing_company);
+  $vault->setFirstName($order->billing_first_name);
+  $vault->setLastName($order->billing_last_name);
+
+  $billing_country = uc_get_country_data(array('country_id' => $order->billing_country));
+  $billing_country = $billing_country[0]['country_iso_code_2'];
+
+  // Billing address
+  $vault->setAddress1($order->billing_street1);
+  $vault->setAddress2($order->billing_street2);
+  $vault->setCity($order->billing_city);
+  $vault->setState(uc_get_zone_code($order->billing_zone));
+  $vault->setZip($order->billing_postal_code);
+  $vault->setCountry($billing_country);
+  $vault->setPhone($order->billing_phone);
+  $vault->setEmail($order->primary_email);
+
+  $vault->add();
+  $response = $vault->execute();
+  return $response;
+}
+
+/**
+ * Use a Customer Vault id to charge and existing Customer Vault profile
+ */
+function _uc_nmi_customer_vault_profile_charge($order, $amount, $data) {
+  global $user;
+  $response = _uc_nmi_customer_vault_profile_charge_request($order, $amount, $data);
+  // Error or Failure
+  if ($response['response'] != 1) {
+    $result = array(
+      'success' => FALSE,
+    );
+    $comment[] = '('. $response['response_code'] .': '. $response['responsetext'] .')';
+  }
+  // Transaction succeeded
+  else {
+    $result = array(
+      'success' => TRUE,
+    );
+
+    // Info message
+    $types = uc_credit_transaction_types();
+    $context = array(
+      'revision' => 'formatted-original',
+      'type' => 'amount',
+    );
+    $comment[] = t('<b>@type:</b> @amount', array('@type' => $types[$data['txn_type']], '@amount' => uc_price($amount, $context)));
+    // Save a comment to the order
+    uc_order_comment_save($order->order_id, $user->uid, implode('<br/>', $comment), 'admin');
+  }
+  // Response to payment gateway API
+  return $result + array(
+    'comment' => implode(', ', $comment),
+    'message' => implode('<br/>', $comment),
+    'uid' => $user->uid,
+  );
+}
+
+/**
+ * Helper to create the Customer Vault charge request
+ */
+function _uc_nmi_customer_vault_profile_charge_request($order, $amount, $data) {
+  $vault = uc_nmi_build_customer_vault();
+  $vault->setCustomerVaultId($data[]);
+  $vault->charge($amount);
+
+  $result = $vault->execute();
+  return $result;
+}
+
+/**
+ * Create and return an nmiCustomerVault object
+ */
+function uc_nmi_build_customer_vault($options = array()) {
+  require_once 'lib/nmiCustomerVault.class.php';
+  // Set up the nmiCustomerVault object
+  $options['nmi_user'] = variable_get('nmi_username', '');
+  $options['nmi_password'] = variable_get('nmi_password', '');
+  // Set url (if needed)
+  $options['nmi_url'] = 'https://secure.inspiregateway.net/api/transact.php';
+
+  $vault = nmiCustomerVault($options);
+  return $vault;
 }
