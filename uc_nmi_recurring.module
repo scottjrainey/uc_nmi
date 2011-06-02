@@ -85,6 +85,9 @@ function uc_nmi_recurring_customer_vault_renew($order, &$fee) {
       uc_payment_enter($order->order_id, $order->payment_method, $order->order_total, $fee->uid, $result['data'], $result['comment']);
       return TRUE;
     }
+    else {
+      watchdog('uc_nmi_recurring', $result['message'], array(), WATCHDOG_ERROR);
+    }
   }
   return FALSE;
 }
