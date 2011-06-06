@@ -395,7 +395,7 @@ function _uc_nmi_customer_vault_profile_charge($order, $amount, $data) {
  */
 function _uc_nmi_customer_vault_profile_charge_request($order, $amount, $data) {
   $vault = uc_nmi_build_customer_vault();
-  $vault->setCustomerVaultId($data[]);
+  $vault->setCustomerVaultId($data['ref_id']);
   $vault->charge($amount);
 
   $result = $vault->execute();
