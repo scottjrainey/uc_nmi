@@ -12,7 +12,7 @@ function uc_nmi_recurring_info() {
   $items['nmi_customer_vault'] = array(
     'name' => t('NMI Gateway Services (Customer Vault)'),
     'payment method' => 'credit',
-    'module' => 'uc_nmi_recurring',
+    'module' => 'uc_recurring',
     'fee handler' => 'nmi_customer_vault',
     'renew callback' => 'uc_nmi_recurring_customer_vault_renew',
     'process callback' => 'uc_nmi_recurring_customer_vault_process',
