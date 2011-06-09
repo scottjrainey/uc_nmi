@@ -55,9 +55,15 @@ function uc_nmi_recurring_info() {
 function uc_nmi_recurring_customer_vault_process($order, &$fee) {
   $fee->fee_handler = 'nmi_customer_vault';
   if (variable_get('uc_nmi_customer_vault_profile', FALSE) == FALSE) {
-    $data = array(
-      'txn_type' => UC_CREDIT_REFERENCE_SET,
-    );
+    $account = user_load($fee->uid);
+    if ($account->data['customer_vault_id']) {
+      $data = array();
+    }
+    else {
+      $data = array(
+        'txn_type' => UC_CREDIT_REFERENCE_SET,
+      );
+    }
     return uc_nmi_charge($order->order_id, $order->total_amount, $data);
   }
   return TRUE;
@@ -74,10 +80,11 @@ function uc_nmi_recurring_customer_vault_process($order, &$fee) {
  *   TRUE if renewal succeeded
  */
 function uc_nmi_recurring_customer_vault_renew($order, &$fee) {
-  if (!empty($order->data['cc_txns']['references'])) {
+  $account = user_load($fee->uid);
+  if ($account->data['customer_vault_id']) {
     $data = array(
       'txn_type' => UC_CREDIT_REFERENCE_TXN,
-      'ref_id' => end(array_keys($order->data['cc_txns']['references'])),
+      'ref_id' => $account->data['customer_vault_id'],
     );
     $result = uc_nmi_charge($order->order_id, $order->order_total, $data);
 
