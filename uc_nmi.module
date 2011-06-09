@@ -347,6 +347,10 @@ function _uc_nmi_customer_vault_profile_create_request($order) {
   $vault->setFirstName($order->billing_first_name);
   $vault->setLastName($order->billing_last_name);
 
+  // Order information
+  $vault->setOrderId($order->order_id);
+  $vault->setOrderDescription(t('Create Customer Vault Profile'));
+
   $billing_country = uc_get_country_data(array('country_id' => $order->billing_country));
   $billing_country = $billing_country[0]['country_iso_code_2'];
 
@@ -408,6 +412,9 @@ function _uc_nmi_customer_vault_profile_charge($order, $amount, $data) {
 function _uc_nmi_customer_vault_profile_charge_request($order, $amount, $data) {
   $vault = uc_nmi_build_customer_vault();
   $vault->setCustomerVaultId($data['ref_id']);
+  // Order Information
+  $vault->setOrderId($order->order_id);
+  $vault->setOrderDescription(t('Recurring charge. Order @id', array('@id' => $order->order_id)));
   $vault->charge($amount);
 
   $result = $vault->execute();
