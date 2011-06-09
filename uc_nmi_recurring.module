@@ -137,7 +137,8 @@ function uc_nmi_recurring_customer_vault_update_form_submit(&$form, &$form_state
   $fee = uc_recurring_fee_user_load($form_state['values']['rfid']);
   $order = uc_order_load($fee->order_id);
   $order->payment_details = $form_state['values']['cc_data'];
-  $customer_vault_id = end(array_keys($order->data['cc_txns']['references']));
+  $account = user_load($fee->uid);
+  $customer_vault_id = $account->data['customer_vault_id'];
   if ($message = _uc_nmi_recurring_customer_vault_update_paymentprofile($order, $customer_vault_id)) {
     drupal_set_message(t('Account update failed.'), 'error');
   }
@@ -161,6 +162,10 @@ function _uc_nmi_recurring_customer_vault_update_paymentprofile($order, $cv_id) 
   // Card information
   $vault->setCcNumber($order->payment_details['cc_number']);
   $vault->setCcExp($month.$year);
+
+  // Order Information
+  $vault->setOrderId = $order->order_id;
+  $vault->setOrderDescription = t("Customer Vault update - @id", array('@id' => $cv_id));
 
   $vault->update();
   $result = $vault->execute();
