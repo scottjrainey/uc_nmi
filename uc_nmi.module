@@ -130,148 +130,82 @@ function uc_nmi_charge($order_id, $amount, $data) {
 
 function _uc_nmi_charge($order, $amount, $data) {
   global $user;
-
-  $description = '';
-
+  
   $description = "Drupal Order $order->order_id";
-
   $description = substr($description, 0, 255);
+
   $billing_country = uc_get_country_data(array('country_id' => $order->billing_country));
   $billing_country = $billing_country[0]['country_iso_code_2'];
 
   $ship_country = uc_get_country_data(array('country_id' => $order->delivery_country));
   $ship_country = $ship_country[0]['country_iso_code_2'];  
   
-  $formdata = array (
-    'username' => variable_get('nmi_username', ''),
-    'password' => variable_get('nmi_password', ''),
+  $month = str_pad($order->payment_details['cc_exp_month'], 2, 0, STR_PAD_LEFT);
+  $year = substr($order->payment_details['cc_exp_year'], -2);
 
-    // Customer Name and Billing Address
-    'firstname' => $order->billing_first_name,
-    'lastname' => $order->billing_last_name,
-    'company' => $order->billing_company,
-    'address1' => $order->billing_street1,
-    'address2' => $order->billing_street2,
-    'city' => $order->billing_city,
-    'state' => uc_get_zone_code($order->billing_zone),
-    'zip' => $order->billing_postal_code,
-    'country' => $billing_country,
-    'phone' => $order->billing_phone,
+  $txn = uc_nmi_build_transaction();
+  // Customer name and billing address
+  $txn->setFirstName($order->billing_first_name);
+  $txn->setLastName($order->billing_last_name);
+  $txn->setCompany($order->billing_company);
+  $txn->setAddress1($order->billing_street1);
+  $txn->setAddress2($order->billing_street2);
+  $txn->setCity($order->billing_city);
+  $txn->setState(uc_get_zone_code($order->billing_zone));
+  $txn->setZip($order->billing_postal_code);
+  $txn->setCountry($billing_country);
+  $txn->setPhone($order->billing_phone);
+  $txn->setEmail($order->primary_email);
 
-    // Customer Shipping Address
-    'shipping_firstname' => $order->delivery_first_name,
-    'shipping_lastname' => $order->delivery_last_name,
-    'shipping_company' => $order->delivery_company,
-    'shipping_address1' => $order->delivery_street1,
-    'shipping_address2' => $order->delivery_street2,
-    'shipping_city' => $order->delivery_city,
-    'shipping_state' => uc_get_zone_code($order->delivery_zone),
-    'shipping_zip' => $order->delivery_postal_code,
-    'shipping_country' => $ship_country,
+  // Customer shipping address
+  $txn->setShippingFirstName($order->delivery_first_name);
+  $txn->setShippingLastName($order->delivery_last_name);
+  $txn->setShippingCompany($order->delivery_company);
+  $txn->setShippingAddress1($order->delivery_street1);
+  $txn->setShippingAddress2($order->delivery_street2);
+  $txn->setShippingCity($order->delivery_city);
+  $txn->setShippingState(uc_get_zone_code($order->delivery_zone));
+  $txn->setShippingZip($order->delivery_postal_code);
+  $txn->setShippingCountry($ship_country);
 
-    // Additioanl customer data
-    'ipaddress' => $_SERVER["REMOTE_ADDR"],
+  // Order information
+  $txn->setOrderId($order->order_id);
+  $txn->setOrderDescription($description);
 
-    // customer email address
-    'email' => $order->primary_email,
+  // Transaction data
+  $txn->setAmount(uc_currency_format($amount, FALSE, FALSE, '.'));
+  $txn->setType(variable_get('nmi_type', ''));
 
-    // Order information
-    'orderid' => $order->order_id,  
-    'orderdescription' => $description,
+  // Credit Card info
+  $txn->setCcNumber($order->payment_details['cc_number']);
+  $txn->setCcExp($month.$year);
+  $txn->setCvv($order->payment_details['cc_cvv']);
 
-    // Transaction Data
-    'amount' => uc_currency_format($amount, FALSE, FALSE, '.'),
-    'type' => variable_get('nmi_type', ''),
+  // Level 2 data
+  $txn->setTax($order->line_items[2]['amount']);
+  $txn->setShipping($order->line_items[1]['amount']);
 
-    'ccnumber' => $order->payment_details['cc_number'],
-    'ccexp' => $order->payment_details['cc_exp_month'] .'/'. $order->payment_details['cc_exp_year'],
-    'cvv' => $order->payment_details['cc_cvv'],
-
-    // Level 2 data
-    'tax' => $order->line_items[2]['amount'],
-    'shipping' => $order->line_items[1]['amount']
-  );
-
-
+  // Product information
   if (is_array($order->products)) {
     $i = 1;
     foreach ($order->products as $product) {
-      $formdata['product_sku_' . $i] = $product->nid;
-      $formdata['product_description_' . $i] = $product->title;
-      $formdata['product_quantity_' . $i] = $product->qty;
-      $formdata['product_amount_' . $i] = $product->price;
+      $product_description = '';
+      $txn->addQueryParameter('product_sku_' . $i, $product->nid);
+      $product_description = $product->title;
+      $txn->addQueryParameter('product_quantity_' . $i, $product->qty);
+      $txn->addQueryParameter('product_amount_' . $i, $product->price);
 
       if (is_array($product->data['attributes'])) {
         foreach ($product->data['attributes'] as $key => $value) {
-          $formdata['product_description_' . $i] .= ', '. $key .': '. $value;
+          $product_description .= ', '. $key .': '. $value;
         }
       }
+      $txn->addQueryParameter('product_description_' . $i, $product_description);
       $i++;
     }
   }
 
-
-  // get host data
-  $port = 443;
-  $host = 'secure.networkmerchants.com';
-  $path = "/gw/api/transact.php";
-
-  //build the post string
-  $poststring = '';
-  foreach($formdata AS $key => $val){
-    $poststring .= urlencode($key)."=".urlencode($val)."&";
-  }
-  // strip off trailing ampersand
-  $poststring = substr($poststring, 0, -1);
-
-  if( function_exists( "curl_init" )) {
-    $ch = curl_init();
-    curl_setopt($ch, CURLOPT_URL, "https://".$host.$path);
-    curl_setopt($ch, CURLOPT_VERBOSE, 0);
-    curl_setopt($ch, CURLOPT_POST, 1);
-    curl_setopt($ch, CURLOPT_POSTFIELDS, $poststring);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
-    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, 0);
-    curl_setopt($ch, CURLOPT_NOPROGRESS, 1);
-    curl_setopt($ch, CURLOPT_FOLLOWLOCATION,0);
-    $return_data = curl_exec($ch);
-    curl_close($ch);
-  }else {
-    $fp = fsockopen("ssl://".$host, $port, $errno, $errstr, $timeout = 60);
-
-    if(!$fp){
-      //error tell us
-      $message = t('Possible server error! - $errstr ($errno)');
-    }else {
-      //send the server request
-      fputs($fp, "POST $path HTTP/1.1\r\n");
-      fputs($fp, "Host: $host\r\n");
-      fputs($fp, "Content-type: application/x-www-form-urlencoded\r\n");
-      fputs($fp, "Content-length: ".strlen($poststring)."\r\n");
-      fputs($fp, "Connection: close\r\n\r\n");
-      fputs($fp, $poststring . "\r\n\r\n");
-
-      //Get the response header from the server
-      $str = '';
-      while(!feof($fp) && !stristr($str, 'content-length')) {
-        $str = fgets($fp, 4096);
-      }
-      // If didnt get content-lenght, something is wrong, return false.
-      if (!stristr($str, 'content-length')) {
-        $message = t('An error occured while communicating with the NetworkMerchants.com server. It didn\'t reply (correctly). Please try again later, thank you.' );
-        return false;
-      }
-      $data = "";
-      while (!feof($fp)) {
-        $data .= fgets ($fp, 1024);
-      }
-
-      $return_data = stristr(trim($data), "response");
-    }
-  }
-
-  parse_str($return_data, $response);
-
+  $response = $txn->execute();
   // Approved - Success!
   if ($response['response'] == "1") {
     $message = t('Credit card payment processed successfully. Transaction ID: !trans', array('!trans' => $response['transactionid']));
@@ -428,14 +362,27 @@ function _uc_nmi_customer_vault_profile_charge_request($order, $amount, $data) {
 /**
  * Create and return an nmiCustomerVault object
  */
-function uc_nmi_build_customer_vault($options = array()) {
+function uc_nmi_build_customer_vault() {
   require_once 'lib/nmiCustomerVault.class.php';
-  // Set up the nmiCustomerVault object
-  $options['nmi_user'] = variable_get('nmi_username', '');
-  $options['nmi_password'] = variable_get('nmi_password', '');
-  // Set url (if needed)
-  $options['nmi_url'] = variable_get('nmi_url', UC_NMI_TXN_URL);
-
+  $options = uc_nmi_get_login_options();
   $vault = new nmiCustomerVault($options);
   return $vault;
+}
+
+/**
+ * Create and return an nmiDirectPost object
+ */
+function uc_nmi_build_transaction() {
+  require_once 'lib/nmiDirectPost.class.php';
+  $options = uc_nmi_get_login_options();
+  $txn = new nmiDirectPost($options);
+  return $txn;
+}
+
+function uc_nmi_get_login_options() {
+  return array(
+    'nmi_user' => variable_get('nmi_username', ''),
+    'nmi_password' => variable_get('nmi_password', ''),
+    'nmi_url' => variable_get('nmi_url', UC_NMI_TXN_URL),
+  );
 }
