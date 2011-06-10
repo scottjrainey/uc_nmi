@@ -531,7 +531,7 @@ class nmiDirectPost extends nmi
      */
     public function auth()
     {
-         $this->setType('sale');
+         $this->setType('auth');
     }
 
     /*
