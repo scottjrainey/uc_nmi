@@ -174,7 +174,6 @@ function _uc_nmi_charge($order, $amount, $data) {
 
   // Transaction data
   $txn->setAmount(uc_currency_format($amount, FALSE, FALSE, '.'));
-  $txn->setType(variable_get('nmi_type', ''));
 
   // Credit Card info
   $txn->setCcNumber($order->payment_details['cc_number']);
@@ -185,24 +184,34 @@ function _uc_nmi_charge($order, $amount, $data) {
   $txn->setTax($order->line_items[2]['amount']);
   $txn->setShipping($order->line_items[1]['amount']);
 
+  // TODO: nmiDirectPost::addQueryParameter is a private method, must find a different way to do this
   // Product information
-  if (is_array($order->products)) {
-    $i = 1;
-    foreach ($order->products as $product) {
-      $product_description = '';
-      $txn->addQueryParameter('product_sku_' . $i, $product->nid);
-      $product_description = $product->title;
-      $txn->addQueryParameter('product_quantity_' . $i, $product->qty);
-      $txn->addQueryParameter('product_amount_' . $i, $product->price);
+  //if (is_array($order->products)) {
+  //  $i = 1;
+  //  foreach ($order->products as $product) {
+  //    $product_description = '';
+  //    $txn->addQueryParameter('product_sku_' . $i, $product->nid);
+  //    $product_description = $product->title;
+  //    $txn->addQueryParameter('product_quantity_' . $i, $product->qty);
+  //    $txn->addQueryParameter('product_amount_' . $i, $product->price);
 
-      if (is_array($product->data['attributes'])) {
-        foreach ($product->data['attributes'] as $key => $value) {
-          $product_description .= ', '. $key .': '. $value;
-        }
-      }
-      $txn->addQueryParameter('product_description_' . $i, $product_description);
-      $i++;
-    }
+  //    if (is_array($product->data['attributes'])) {
+  //      foreach ($product->data['attributes'] as $key => $value) {
+  //        $product_description .= ', '. $key .': '. $value;
+  //      }
+  //    }
+  //    $txn->addQueryParameter('product_description_' . $i, $product_description);
+  //    $i++;
+  //  }
+  //}
+
+  switch (variable_get('nmi_type', 'sale')) {
+    case 'sale':
+      $txn->sale();
+      break;
+    case 'auth':
+      $txn->auth();
+      break;
   }
 
   $response = $txn->execute();
