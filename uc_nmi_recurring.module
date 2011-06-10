@@ -56,7 +56,7 @@ function uc_nmi_recurring_customer_vault_process($order, &$fee) {
   $fee->fee_handler = 'nmi_customer_vault';
   if (variable_get('uc_nmi_customer_vault_profile', FALSE) == FALSE) {
     $account = user_load($fee->uid);
-    if ($account->data['customer_vault_id']) {
+    if ($account->customer_vault_id) {
       $data = array();
     }
     else {
@@ -81,10 +81,10 @@ function uc_nmi_recurring_customer_vault_process($order, &$fee) {
  */
 function uc_nmi_recurring_customer_vault_renew($order, &$fee) {
   $account = user_load($fee->uid);
-  if ($account->data['customer_vault_id']) {
+  if ($account->customer_vault_id) {
     $data = array(
       'txn_type' => UC_CREDIT_REFERENCE_TXN,
-      'ref_id' => $account->data['customer_vault_id'],
+      'ref_id' => $account->customer_vault_id,
     );
     $result = uc_nmi_charge($order->order_id, $order->order_total, $data);
 
@@ -138,8 +138,7 @@ function uc_nmi_recurring_customer_vault_update_form_submit(&$form, &$form_state
   $order = uc_order_load($fee->order_id);
   $order->payment_details = $form_state['values']['cc_data'];
   $account = user_load($fee->uid);
-  $customer_vault_id = $account->data['customer_vault_id'];
-  if ($message = _uc_nmi_recurring_customer_vault_update_paymentprofile($order, $customer_vault_id)) {
+  if ($message = _uc_nmi_recurring_customer_vault_update_paymentprofile($order, $account->customer_vault_id)) {
     drupal_set_message(t('Account update failed.'), 'error');
   }
   else {
