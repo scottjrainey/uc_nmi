@@ -226,7 +226,7 @@ function _uc_nmi_charge($order, $amount, $data) {
     );
     
     // Set up customer vault profile if appropriate
-    if (variable_get('uc_nmi_customer_vault_profile', FALSE)) { // TODO: Add check for recurring product
+    if (_uc_cart_permission_to_create_user()) {
       _uc_nmi_customer_vault_profile_create($order);
     }
 
