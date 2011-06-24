@@ -97,7 +97,7 @@ function uc_nmi_settings_form() {
   );
   $form['nmi_settings']['customer_vault_settings']['uc_nmi_customer_vault_profile'] = array(
     '#type' => 'checkbox',
-    '#title' => t('Always create a Customer Vault profile for securely storing CC info for later user.'),
+    '#title' => t('Create a Customer Vault profile for securely storing CC info for later use when appropriate.'),
     '#default_value' => variable_get('uc_nmi_customer_vault_profile', FALSE),
   );
 
