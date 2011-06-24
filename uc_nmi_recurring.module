@@ -54,7 +54,7 @@ function uc_nmi_recurring_info() {
  */
 function uc_nmi_recurring_customer_vault_process($order, &$fee) {
   $fee->fee_handler = 'nmi_customer_vault';
-  if (variable_get('uc_nmi_customer_vault_profile', FALSE) != FALSE && uc_recurring_get_fees($order)) {
+  if (variable_get('uc_nmi_customer_vault_profile', FALSE) && count(uc_recurring_get_fees($order))) {
     $account = user_load($fee->uid);
     if ($account->customer_vault_id) {
       $data = array();
