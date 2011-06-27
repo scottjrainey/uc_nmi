@@ -230,7 +230,7 @@ function _uc_nmi_charge($order, $amount, $data) {
       _uc_nmi_customer_vault_profile_create($order);
     }
 
-  }elseif ($response['response'] == "2") {   // Payment Declined
+  } elseif ($response['response'] == "2") {   // Payment Declined
     $message = t('Credit card declined. Reason code: !text', array('!text' => $response['responsetext']));
     $result = array(
       'success' => FALSE,
@@ -434,7 +434,7 @@ function uc_checkout_pane_new_user_info($op, &$arg1, $arg2) {
         }
       }
 
-      if ($user->uid == 0) {
+      if ($user->uid == 0 && _uc_cart_permission_to_create_user($arg1)) {
         $contents['new_account'] = array();
 
         if (variable_get('uc_nmi_new_account_name', FALSE)) {
@@ -568,3 +568,10 @@ function uc_checkout_pane_new_user_info($op, &$arg1, $arg2) {
       return $form;
   }
 }
+
+// Test if a product is recurring
+function uc_product_is_recurring($product) {
+  $result = db_fetch_array(db_query("SELECT pfid FROM {uc_product_features} WHERE nid = ? AND fid = 'recurring'", $product->nid));
+  return $result;
+}
+
