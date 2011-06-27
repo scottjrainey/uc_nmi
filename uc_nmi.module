@@ -226,6 +226,10 @@ function _uc_nmi_charge($order, $amount, $data) {
     );
     
     // Set up customer vault profile if appropriate
+    if (!function_exists('_uc_cart_permission_to_create_user')) {
+      include_once(drupal_get_path('module', 'uc_cart.module').'uc_cart.module');
+    }
+
     if (_uc_cart_permission_to_create_user($order)) {
       _uc_nmi_customer_vault_profile_create($order);
     }
