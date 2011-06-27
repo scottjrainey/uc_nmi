@@ -568,10 +568,3 @@ function uc_checkout_pane_new_user_info($op, &$arg1, $arg2) {
       return $form;
   }
 }
-
-// Test if a product is recurring
-function uc_product_is_recurring($product) {
-  $result = db_fetch_array(db_query("SELECT pfid FROM {uc_product_features} WHERE nid = ? AND fid = 'recurring'", $product->nid));
-  return $result;
-}
-
