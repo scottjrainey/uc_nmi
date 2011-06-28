@@ -226,7 +226,7 @@ function _uc_nmi_charge($order, $amount, $data) {
     );
     
     // Set up customer vault profile if appropriate
-    if (_uc_cart_permission_to_create_user($order)) {
+    if (_uc_cart_permission_to_create_user()) {
       _uc_nmi_customer_vault_profile_create($order);
     }
 
@@ -434,7 +434,7 @@ function uc_checkout_pane_new_user_info($op, &$arg1, $arg2) {
         }
       }
 
-      if ($user->uid == 0 && _uc_cart_permission_to_create_user($arg1)) {
+      if ($user->uid == 0 && _uc_cart_permission_to_create_user()) {
         $contents['new_account'] = array();
 
         if (variable_get('uc_nmi_new_account_name', FALSE)) {
