@@ -396,7 +396,7 @@ function uc_nmi_get_login_options() {
 }
 
 /**
- * Implementation of hook_cart_pane_alter()
+ * Implementation of hook_checkout_pane_alter()
  */
 function uc_nmi_checkout_pane_alter(&$panes) {
   foreach ($panes as &$pane) {
