@@ -277,7 +277,7 @@ function _uc_nmi_customer_vault_profile_create($order) {
     // Save the new profile to the db
     //$order->data = uc_credit_log_reference($order->order_id, $result['customer_vault_id'], $order->payment_details['cc_number']);
     // Save the new profile to the db as part of the data array of the user object
-    $account = user_load($order->uid);
+    $account = user_load(array('init' => $order->primary_email));
     die(var_dump($account));
     user_save($account, array('customer_vault_id' => $result['customer_vault_id']));
     $customer_profile_already_created = TRUE;
