@@ -130,12 +130,7 @@ function uc_nmi_charge($order_id, $amount, $data) {
 
 function _uc_nmi_charge($order, $amount, $data) {
   global $user;
-  static $customer_profile_has_been_created;
 
-  if (!isset($customer_profile_has_been_created)) {
-    $customer_profile_has_been_created = FALSE;
-  }
-  
   $description = "Drupal Order $order->order_id";
   $description = substr($description, 0, 255);
 
@@ -231,8 +226,7 @@ function _uc_nmi_charge($order, $amount, $data) {
     );
     
     // Set up customer vault profile if appropriate
-    if (_uc_cart_permission_to_create_user() && !$customer_profile_has_been_created) {
-      $customer_profile_has_been_created = TRUE;
+    if (_uc_cart_permission_to_create_user()) {
       _uc_nmi_customer_vault_profile_create($order);
     }
 
@@ -261,24 +255,36 @@ function _uc_nmi_charge($order, $amount, $data) {
 }
 
 function _uc_nmi_customer_vault_profile_create($order) {
-  $result = _uc_nmi_customer_vault_profile_create_request($order);
-  // Bail on error (response = 3) or failure (response = 2)
-  if ($result['response'] != 1) {
-    $message = t('NMI: Customer Vault error or failure. Reason code: !text', array('!text' => $result['responsetext']));
-    uc_order_comment_save($order->order_id, 0, $message, 'admin');
-    watchdog('uc_nmi_recurring', $message, array(), WATCHDOG_ERROR);
-    return $message;
+  static $customer_profile_already_created;
+
+  if (!isset($customer_profile_already_created)) {
+    $customer_profile_already_created = FALSE;
+  }
+
+  // Only create a profile if this is the first time through this call
+  if (!$customer_profile_already_created) {
+    $result = _uc_nmi_customer_vault_profile_create_request($order);
+    // Bail on error (response = 3) or failure (response = 2)
+    if ($result['response'] != 1) {
+      $message = t('NMI: Customer Vault error or failure. Reason code: !text', array('!text' => $result['responsetext']));
+      uc_order_comment_save($order->order_id, 0, $message, 'admin');
+      watchdog('uc_nmi_recurring', $message, array(), WATCHDOG_ERROR);
+      return $message;
+    }
+    else {
+      uc_order_comment_save($order->order_id, 0, t('NMI: Customer Vault profile created - @id', array('@id' => $result['customer_vault_id'])), 'admin');
+    } 
+    
+    // Save the new profile to the db
+    //$order->data = uc_credit_log_reference($order->order_id, $result['customer_vault_id'], $order->payment_details['cc_number']);
+    // Save the new profile to the db as part of the data array of the user object
+    $account = user_load($order->uid);
+    user_save($account, array('customer_vault_id' => $result['customer_vault_id']));
+    return '';
   }
   else {
-    uc_order_comment_save($order->order_id, 0, t('NMI: Customer Vault profile created - @id', array('@id' => $result['customer_vault_id'])), 'admin');
-  } 
-  
-  // Save the new profile to the db
-  //$order->data = uc_credit_log_reference($order->order_id, $result['customer_vault_id'], $order->payment_details['cc_number']);
-  // Save the new profile to the db as part of the data array of the user object
-  $account = user_load($order->uid);
-  user_save($account, array('customer_vault_id' => $result['customer_vault_id']));
-  return '';
+    return '';
+  }
 }
 
 /**
