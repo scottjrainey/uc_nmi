@@ -261,7 +261,6 @@ function _uc_nmi_customer_vault_profile_create($order) {
     $customer_profile_already_created = FALSE;
   }
 
-  // Only create a profile if this is the first time through this call
   if (!$customer_profile_already_created) {
     $result = _uc_nmi_customer_vault_profile_create_request($order);
     // Bail on error (response = 3) or failure (response = 2)
@@ -280,6 +279,7 @@ function _uc_nmi_customer_vault_profile_create($order) {
     // Save the new profile to the db as part of the data array of the user object
     $account = user_load($order->uid);
     user_save($account, array('customer_vault_id' => $result['customer_vault_id']));
+    $customer_profile_already_created = TRUE;
     return '';
   }
   else {
