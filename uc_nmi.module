@@ -130,6 +130,7 @@ function uc_nmi_charge($order_id, $amount, $data) {
 
 function _uc_nmi_charge($order, $amount, $data) {
   global $user;
+  static $customer_profile_has_been_created;
   
   $description = "Drupal Order $order->order_id";
   $description = substr($description, 0, 255);
@@ -226,7 +227,8 @@ function _uc_nmi_charge($order, $amount, $data) {
     );
     
     // Set up customer vault profile if appropriate
-    if (_uc_cart_permission_to_create_user()) {
+    if (_uc_cart_permission_to_create_user() && !$customer_profile_has_been_created) {
+      $customer_profile_has_been_created = TRUE;
       _uc_nmi_customer_vault_profile_create($order);
     }
 
