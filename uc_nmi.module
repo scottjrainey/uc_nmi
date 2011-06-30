@@ -588,7 +588,7 @@ function uc_checkout_pane_new_user_info($op, &$arg1, $arg2) {
 function uc_nmi_user($op, &$edit, &$account, $category = NULL) {
   if ($op == 'insert' && isset($_SESSION['new_customer_vault_id'])) {
     die(var_dump($_SESSION['new_customer_vault_id']));
-    $account->customer_vault_id = $_SESSION['new_customer_vault_id'];
+    $edit['customer_vault_id'] = $_SESSION['new_customer_vault_id'];
     unset($_SESSION['new_customer_vault_id']);
   }
 }
